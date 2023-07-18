@@ -1,0 +1,71 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <curl/curl.h>
+#include <cjson/cJSON.h>
+
+// Обработчик HTTP-ответа
+size_t write_callback(void *contents, size_t size, size_t nmemb, char *output) {
+    size_t total_size = size * nmemb;
+    strcat(output, contents);
+    return total_size;
+}
+
+int main() {
+    CURL *curl;
+    CURLcode res;
+    char url[256];
+    char address[256];
+    char json_response[4096] = "";
+
+    // Замените YOUR_API_KEY на ваш ключ API от Google Maps
+    char api_key[] = "YOUR_API_KEY";
+
+    // Адрес для получения геолокации
+    strcpy(address, "1600 Amphitheatre Parkway, Mountain View, CA");
+
+    // Формируем URL для GET-запроса
+    snprintf(url, sizeof(url), "https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s", address, api_key);
+
+    // Инициализируем библиотеку libcurl
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    // Создаем объект для работы с cURL
+    curl = curl_easy_init();
+    if (curl) {
+        // Устанавливаем URL для запроса
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+
+        // Устанавливаем обработчик для ответа сервера
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, json_response);
+
+        // Выполняем запрос
+        res = curl_easy_perform(curl);
+
+        // Проверяем наличие ошибок
+        if (res != CURLE_OK) {
+            fprintf(stderr, "Ошибка cURL: %s\n", curl_easy_strerror(res));
+        } else {
+            // Обрабатываем ответ от сервера
+            cJSON *root = cJSON_Parse(json_response);
+            if (root) {
+                cJSON *location = cJSON_GetObjectItem(cJSON_GetArrayItem(cJSON_GetObjectItem(root, "results"), 0), "geometry");
+                double latitude = cJSON_GetObjectItem(location, "location")->child->valuedouble;
+                double longitude = cJSON_GetObjectItem(location, "location")->child->next->valuedouble;
+                printf("Широта: %lf, Долгота: %lf\n", latitude, longitude);
+                cJSON_Delete(root);
+            } else {
+                fprintf(stderr, "Ошибка разбора JSON: %s\n", cJSON_GetErrorPtr());
+            }
+        }
+
+        // Освобождаем ресурсы
+        curl_easy_cleanup(curl);
+    }
+
+    // Освобождаем глобальные ресурсы libcurl
+    curl_global_cleanup();
+
+    return 0;
+}
